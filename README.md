@@ -1,5 +1,7 @@
 # B20 Inspector
 
+**Live: https://b20-inspector.vercel.app**
+
 Paste a [B20](https://docs.base.org/specifications/b20/index) token address and see who controls it: who can mint, seize, pause, blocklist, rename or rescale it, and what that means for a holder's balance.
 
 B20 is Base's native token standard (live since the Beryl upgrade, extended in Cobalt). Every B20 token carries a role tree and policy slots. Most launchpad tokens are created without an admin, so their rules are final. Issued assets such as tokenized stocks keep an admin, minters, pausers and a blocklist. Copies of well-known tickers are common. The inspector tells these apart.
