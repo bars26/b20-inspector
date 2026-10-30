@@ -40,6 +40,8 @@ jobs:
       - name: Publish
         working-directory: out
         run: |
+          # Vercel reads deployment settings from the branch being pushed, so the data branch carries its own.
+          echo '{"git":{"deploymentEnabled":false}}' > vercel.json
           git init -q -b data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
