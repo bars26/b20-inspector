@@ -111,8 +111,10 @@ export async function findFirstBlock(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function isHistoryError(e: unknown) {
+export function isHistoryError(e: unknown) {
   const msg = (e as Error)?.message ?? String(e);
+  // publicnode also uses 403 for rate limiting; those are retryable, not missing history.
+  if (/exceeds defined limit|rate limit|too many requests/i.test(msg)) return false;
   // publicnode answers old ranges with an "archive … personal token" error, or a bare HTTP 403.
   return (e as { status?: number })?.status === 403 || /archive|pruned|missing trie|history|not available|personal token|dedicated|Status: 403/i.test(msg);
 }

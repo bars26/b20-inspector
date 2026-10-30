@@ -1,6 +1,9 @@
 // Turns a TokenSnapshot into what a holder needs to know: who can do what to their balance.
 // Pure and synchronous so it can be unit-tested against hand-built snapshots.
 import { MAX_SUPPLY_CAP, type RoleName, type ScopeName } from "./b20.ts";
+import type { IndexContext } from "./feed.ts";
+import { KNOWN_ISSUERS } from "./feed.ts";
+import { claimsBrand, imitates, unicodeTrick } from "./identity.ts";
 import type { Account, PolicyState, TokenSnapshot } from "./types.ts";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "good";
@@ -34,11 +37,15 @@ export interface Verdict {
 
 const RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1, good: 0 };
 
-/** Tickers whose real Base deployments are ERC-20s, so a B20 using them is never the canonical asset. */
-const MAJOR_TICKERS = new Set(["BTC", "ETH", "WETH", "CBBTC", "WBTC", "USDC", "USDT", "DAI", "USDS", "EURC", "SOL", "CBETH", "WSTETH"]);
-const BRANDED = /\b(by virtuals|coinbase|base official|official)\b/i;
+export interface JudgeOptions {
+  /** Unix seconds; defaults to the current time. */
+  now?: number;
+  /** Factory-index context (clones, serial deployers). Optional: the verdict stands without it. */
+  index?: IndexContext;
+}
 
-export function judge(s: TokenSnapshot, now = Math.floor(Date.now() / 1000)): Verdict {
+export function judge(s: TokenSnapshot, opts: JudgeOptions = {}): Verdict {
+  const now = opts.now ?? Math.floor(Date.now() / 1000);
   const f: Finding[] = [];
   const holders = (r: RoleName) => s.roles[r]?.holders ?? [];
   const admins = holders("DEFAULT_ADMIN_ROLE");
@@ -231,19 +238,68 @@ export function judge(s: TokenSnapshot, now = Math.floor(Date.now() / 1000)): Ve
   }
 
   // --- Identity ---
-  if (MAJOR_TICKERS.has(s.symbol.toUpperCase().replace(/[^A-Z]/g, ""))) {
+  const issuer = s.creation?.via ? KNOWN_ISSUERS[s.creation.via] : undefined;
+  const verifiedIssuer = issuer && s.contractURI?.startsWith(issuer.uriPrefix) ? issuer.label : undefined;
+  if (verifiedIssuer) {
     f.push({
-      id: "impersonation-ticker",
-      severity: "critical",
-      title: `Not the real ${s.symbol}`,
-      detail: `The canonical ${s.symbol} on Base is a standard ERC-20, never a B20 token. Anything under this ticker on a 0xb2… address is a copy.`,
+      id: "known-issuer",
+      severity: "good",
+      title: `Issued by ${verifiedIssuer}`,
+      detail: "Created through that issuer's launch contract, and its metadata points to the issuer's own domain.",
     });
-  } else if (BRANDED.test(s.name) && s.creation && !s.creation.via) {
+  }
+  const copy = imitates(s.name, s.symbol);
+  if (copy) {
+    const real = copy.address ? ` The real ${copy.symbol} on Base is the ERC-20 at ${copy.address}.` : "";
+    f.push(
+      copy.symbol === "BASE"
+        ? { id: "impersonation-ticker", severity: "high", title: "Base has no token", detail: "Base has not issued a network token. Anything named Base or using the BASE ticker is unofficial." }
+        : copy.symbol === "USD"
+          ? { id: "impersonation-ticker", severity: "medium", title: "Uses the bare USD ticker", detail: "Real dollar stablecoins on Base trade as USDC, USDT, USDS and similar. A token called USD is not one of them unless its issuer says so." }
+          : { id: "impersonation-ticker", severity: "critical", title: `Not the real ${copy.symbol}`, detail: `No B20 token is ${copy.name}.${real}` },
+    );
+  }
+  const trick = unicodeTrick(s.symbol) ?? unicodeTrick(s.name);
+  if (trick) {
+    f.push({
+      id: "unicode-trick",
+      severity: "high",
+      title: "Name or symbol uses deceptive characters",
+      detail: `It ${trick.detail}, so it can look like a different token in wallets and explorers.`,
+    });
+  }
+  if (!copy && !verifiedIssuer && claimsBrand(s.name) && s.creation && !s.creation.via) {
     f.push({
       id: "impersonation-brand",
       severity: "high",
       title: "Claims a brand but was created directly",
-      detail: `"${s.name}" names a platform, but the token was created straight from the factory by a wallet, not through that platform's contract.`,
+      detail: `"${s.name}" names a platform, but a wallet created it straight from the factory instead of through a platform contract. Check with the platform before trusting it.`,
+    });
+  }
+  const ix = opts.index;
+  const clone = ix?.symbolClones ?? ix?.nameClones;
+  if (clone && !verifiedIssuer) {
+    const original = clone.first.toLowerCase() === s.address.toLowerCase();
+    const others = clone.count - 1;
+    const by = ix?.symbolClones ? "symbol" : "name";
+    f.push({
+      id: original ? "cloned" : "clone",
+      severity: original ? "low" : others >= 2 ? "high" : "medium",
+      title: original
+        ? `${others} later B20 token${others === 1 ? "" : "s"} copied this ${by}`
+        : `One of ${clone.count} B20 tokens with this ${by}`,
+      detail: original
+        ? "This is the earliest token with this name or symbol that the index has seen."
+        : `The earliest one (${clone.first}) was created ${date(clone.firstTime)}. Make sure this is the one you meant.`,
+    });
+  }
+  const launches = ix?.deployerLaunches;
+  if (launches && launches >= 3 && !verifiedIssuer) {
+    f.push({
+      id: "serial-deployer",
+      severity: launches >= 10 ? "medium" : "low",
+      title: `Its creator launched ${launches} B20 tokens`,
+      detail: `The wallet that created this token has created ${launches} B20 tokens since ${date(ix.coverageFromTime)}. Mass launching is common for spam and rug pulls.`,
     });
   }
 
@@ -333,6 +389,8 @@ function pct(part: bigint, whole: bigint) {
 function ratio(a: bigint, b: bigint) {
   return b === 0n ? "∞" : (Number((a * 10_000n) / b) / 10_000).toString();
 }
+
+const date = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
 
 export function fmt(v: bigint, decimals: number) {
   const s = v.toString().padStart(decimals + 1, "0");

@@ -1,6 +1,8 @@
 // Every string from the chain (name, symbol, URIs) is attacker-controlled, so the DOM is built
 // with textContent only; nothing goes through innerHTML.
 import { ROLE_NAMES, SCOPE_NAMES, type RoleName, type ScopeName } from "./b20.ts";
+import { contextFor, loadIndex, rowFlags, rowTime, type LoadedIndex } from "./feed.ts";
+import { blockTime } from "./indexer.ts";
 import { checkWallet, inspectToken, NotB20Error } from "./inspect.ts";
 import { makeRpc, type NetworkId, type Rpc } from "./rpc.ts";
 import type { Account, PolicyState, TokenSnapshot } from "./types.ts";
@@ -23,6 +25,7 @@ const overrides = {
   logsRpc: params.get("logsRpc") ?? undefined,
   chunk: params.get("chunk") ? Number(params.get("chunk")) : undefined,
 };
+const dataBase = params.get("data") ?? undefined;
 
 let network: NetworkId = "base";
 let run = 0;
@@ -34,6 +37,7 @@ function route(): { net: NetworkId; addr?: string } {
 
 function setNetwork(n: NetworkId) {
   network = n;
+  document.getElementById("feed-link")?.setAttribute("href", `#/${n}/new`);
   for (const b of document.querySelectorAll<HTMLButtonElement>(".net button")) b.setAttribute("aria-pressed", String(b.dataset.net === n));
 }
 
@@ -60,9 +64,15 @@ async function load() {
     out.replaceChildren();
     return;
   }
-  input.value = addr;
   const me = ++run;
   const rpc = makeRpc(net, overrides);
+  if (addr === "new") return showFeed(rpc, me);
+  input.value = addr;
+  // The index only adds context (clones, serial deployers); never let it hold up the verdict.
+  const index = Promise.race([
+    loadIndex(rpc, dataBase).catch(() => undefined),
+    new Promise<undefined>((r) => setTimeout(r, 15_000)),
+  ]);
   const steps = h("ol");
   out.replaceChildren(h("div", { class: "panel status" }, "Inspecting on ", net === "base" ? "Base mainnet" : "Base Sepolia", "…", steps));
   let last: HTMLElement | undefined;
@@ -74,7 +84,10 @@ async function load() {
       steps.append(last);
     });
     if (me !== run) return;
-    render(rpc, snap, judge(snap));
+    const idx = await index;
+    if (me !== run) return;
+    const ctx = idx && contextFor(idx, { name: snap.name, symbol: snap.symbol, creator: snap.creation?.via ? undefined : snap.creation?.from });
+    render(rpc, snap, judge(snap, { index: ctx }));
     document.title = `${snap.symbol} · B20 Inspector`;
   } catch (e) {
     if (me !== run) return;
@@ -252,4 +265,118 @@ function safeHttps(u: string) {
 
 function link(href: string, text: string) {
   return h("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
+}
+
+// ---------------------------------------------------------------- feed
+
+type FeedFilter = "all" | "flagged" | "clean" | "launchpad" | "stablecoin";
+
+async function showFeed(rpc: Rpc, me: number) {
+  document.title = "New B20 tokens · B20 Inspector";
+  input.value = "";
+  out.replaceChildren(h("div", { class: "panel status" }, "Loading the token index…"));
+  let idx: LoadedIndex;
+  try {
+    idx = await loadIndex(rpc, dataBase);
+  } catch (e) {
+    if (me !== run) return;
+    out.replaceChildren(h("div", { class: "panel error" }, `Could not load the token index: ${(e as Error).message}`));
+    return;
+  }
+  if (me !== run) return;
+
+  const ex = rpc.config.explorer;
+  const rows = idx.recent.map((r) => ({ r, flags: rowFlags(idx, r) }));
+  const flagged = (f: ReturnType<typeof rowFlags>) => !!(f.imitates || f.trick || f.brandClaim || (f.clones ?? 0) > 1 || (f.serial ?? 0) >= 10);
+  const now = Math.floor(Date.now() / 1000);
+  const day = rows.filter((x) => now - rowTime(idx, x.r) < 86_400);
+
+  // Most-copied symbols in the window, by how many tokens used them recently.
+  const copies = new Map<string, number>();
+  for (const { r, flags } of rows) if (flags.clones) copies.set(r[4], (copies.get(r[4]) ?? 0) + 1);
+  const topCopies = [...copies.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  const pctOf = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : "–");
+  const stat = (label: string, value: string) => h("div", { class: "stat" }, h("div", { class: "stat-value" }, value), h("div", { class: "stat-label" }, label));
+  const updated = Math.max(0, Math.round((now - idx.meta.anchor.timestamp) / 60));
+
+  const stats = h("div", { class: "panel" },
+    h("h2", {}, `New B20 tokens on ${rpc.network === "base" ? "Base" : "Base Sepolia"}`),
+    h("div", { class: "stats" },
+      stat("created in the last 24h", day.length.toLocaleString("en-US")),
+      stat("created straight from the factory", pctOf(day.filter((x) => !x.r[7]).length, day.length)),
+      stat("carry a warning", pctOf(day.filter((x) => flagged(x.flags)).length, day.length)),
+      stat("stablecoins", day.filter((x) => x.r[2] === 1).length.toLocaleString("en-US")),
+    ),
+    topCopies.length > 0 && h("p", { class: "copies" }, h("span", { class: "label" }, "Most copied this week: "), ...topCopies.map(([sym, n]) => h("span", { class: "chip" }, `${sym} ×${n}`))),
+    h("p", { class: "none small" },
+      `Last ${7} days, newest first. Index updated ${updated} min ago and topped up live from the chain. `,
+      `It covers tokens created since ${new Date(blockTime(idx.meta, idx.meta.fromBlock) * 1000).toISOString().slice(0, 10)}.`),
+  );
+
+  let filter: FeedFilter = "all";
+  let query = "";
+  let limit = 150;
+  const list = h("ul", { class: "feed" });
+  const more = h("button", { class: "btn more", type: "button" }, "Show more");
+  more.addEventListener("click", () => { limit += 150; draw(); });
+
+  const chips = h("div", { class: "filters", role: "group", "aria-label": "Filter" });
+  const labels: [FeedFilter, string][] = [["all", "All"], ["flagged", "With warnings"], ["clean", "No warnings"], ["launchpad", "Via a contract"], ["stablecoin", "Stablecoins"]];
+  for (const [f, label] of labels) {
+    const b = h("button", { type: "button", "aria-pressed": String(f === filter) }, label);
+    b.addEventListener("click", () => {
+      filter = f;
+      for (const c of chips.children) c.setAttribute("aria-pressed", String(c === b));
+      limit = 150;
+      draw();
+    });
+    chips.append(b);
+  }
+  const search = h("input", { placeholder: "Filter by name or symbol", "aria-label": "Filter by name or symbol", spellcheck: "false" }) as HTMLInputElement;
+  search.addEventListener("input", () => { query = search.value.trim().toLowerCase(); limit = 150; draw(); });
+
+  function draw() {
+    const shown = rows.filter(({ r, flags }) => {
+      if (query && !r[3].toLowerCase().includes(query) && !r[4].toLowerCase().includes(query)) return false;
+      if (filter === "flagged") return flagged(flags);
+      if (filter === "clean") return !flagged(flags);
+      if (filter === "launchpad") return !!r[7];
+      if (filter === "stablecoin") return r[2] === 1;
+      return true;
+    });
+    list.replaceChildren(...shown.slice(0, limit).map(({ r, flags }) => feedRow(idx, r, flags, ex)));
+    if (!shown.length) list.append(h("li", { class: "none" }, "No tokens match."));
+    more.hidden = shown.length <= limit;
+  }
+  draw();
+
+  out.replaceChildren(stats, h("div", { class: "panel" }, h("div", { class: "feed-tools" }, chips, search), list, more));
+}
+
+function feedRow(idx: LoadedIndex, r: LoadedIndex["recent"][number], f: ReturnType<typeof rowFlags>, ex: string) {
+  const badges: Child[] = [];
+  const badge = (sev: string, text: string, title?: string) => h("span", { class: `badge sev-${sev}`, ...(title ? { title } : {}) }, text);
+  if (f.imitates) badges.push(badge(f.imitates.address || ["BTC", "ETH", "SOL"].includes(f.imitates.symbol) ? "critical" : "high", `not ${f.imitates.symbol}`, `Imitates ${f.imitates.name}`));
+  if (f.trick) badges.push(badge("high", "deceptive text", f.trick.detail));
+  if (f.brandClaim) badges.push(badge("high", "unverified brand", "Names a platform but was created straight from the factory by a wallet"));
+  if (f.clones && f.clones > 1) badges.push(badge(f.clones > 2 ? "high" : "medium", `${f.clones} copies`, "B20 tokens with the same normalized symbol"));
+  if (f.serial && f.serial >= 3) badges.push(badge(f.serial >= 10 ? "medium" : "low", `creator: ${f.serial} launches`));
+  if (f.issuer) badges.push(badge("good", f.issuer));
+  if (r[2] === 1) badges.push(badge("low", "stablecoin"));
+
+  const t = rowTime(idx, r);
+  return h("li", { class: "feed-row" },
+    h("span", { class: "when", title: new Date(t * 1000).toISOString() }, ago(t)),
+    h("a", { class: "feed-name", href: `#/${idx.meta.network}/${r[0]}` }, `${r[3] || "(no name)"} `, h("span", { class: "none" }, r[4])),
+    h("span", { class: "via none" }, r[7] ? h("a", { href: `${ex}/address/${r[7]}`, target: "_blank", rel: "noopener noreferrer" }, `via ${r[7].slice(0, 6)}…${r[7].slice(-4)}`) : "direct"),
+    h("span", { class: "badges" }, ...badges),
+  );
+}
+
+function ago(t: number) {
+  const s = Math.max(0, Math.floor(Date.now() / 1000) - t);
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))}m`;
+  if (s < 86_400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86_400)}d`;
 }

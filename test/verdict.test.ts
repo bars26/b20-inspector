@@ -149,15 +149,71 @@ describe("judge", () => {
 
   it("warns about a scheduled multiplier change only while it is in the future", () => {
     const m = { current: 10n ** 18n, pending: 2n * 10n ** 18n, effectiveAt: 2000n };
-    expect(ids(judge(snap({ multiplier: m }), 1000))).toContain("multiplier-scheduled");
-    expect(ids(judge(snap({ multiplier: m }), 3000))).not.toContain("multiplier-scheduled");
-    expect(judge(snap({ multiplier: m }), 1000).findings.find((f) => f.id === "multiplier-scheduled")!.detail).toContain("×2");
+    expect(ids(judge(snap({ multiplier: m }), { now: 1000 }))).toContain("multiplier-scheduled");
+    expect(ids(judge(snap({ multiplier: m }), { now: 3000 }))).not.toContain("multiplier-scheduled");
+    expect(judge(snap({ multiplier: m }), { now: 1000 }).findings.find((f) => f.id === "multiplier-scheduled")!.detail).toContain("×2");
   });
 
   it("records prior seizures and renames", () => {
     const v = judge(snap({ seizures: { count: 2, total: 15n * 10n ** 17n }, renames: { count: 1, name: "New" } }));
     expect(v.findings.find((f) => f.id === "seized-before")!.detail).toContain("1.5 MEME");
     expect(v.findings.find((f) => f.id === "renamed")!.detail).toContain('Launched as "Meme"');
+  });
+});
+
+describe("judge with index context", () => {
+  const first = "0x9999999999999999999999999999999999999999" as const;
+  const index = (over: Record<string, unknown> = {}) => ({ coverageFrom: 1, coverageFromTime: 1_757_000_000, ...over });
+
+  it("calls out a copy and names the original", () => {
+    const v = judge(snap(), { index: index({ symbolClones: { count: 5, first, firstBlock: 1, firstTime: 1_760_000_000 } }) });
+    const c = v.findings.find((f) => f.id === "clone")!;
+    expect(c.severity).toBe("high");
+    expect(c.title).toBe("One of 5 B20 tokens with this symbol");
+    expect(c.detail).toContain(first);
+  });
+
+  it("credits the original instead of flagging it", () => {
+    const s = snap();
+    const v = judge(s, { index: index({ symbolClones: { count: 3, first: s.address, firstBlock: 1, firstTime: 1 } }) });
+    expect(v.findings.find((f) => f.id === "cloned")!.title).toBe("2 later B20 tokens copied this symbol");
+    expect(ids(v)).not.toContain("clone");
+  });
+
+  it("flags serial deployers from ten launches up as medium", () => {
+    expect(judge(snap(), { index: index({ deployerLaunches: 2 }) }).findings.some((f) => f.id === "serial-deployer")).toBe(false);
+    expect(judge(snap(), { index: index({ deployerLaunches: 4 }) }).findings.find((f) => f.id === "serial-deployer")!.severity).toBe("low");
+    expect(judge(snap(), { index: index({ deployerLaunches: 37 }) }).findings.find((f) => f.id === "serial-deployer")!.severity).toBe("medium");
+  });
+
+  it("trusts a known issuer only when its metadata agrees", () => {
+    const coinbase = "0x4bA3E29E254F25E94E61C4c9d67b37027331534D" as const;
+    const s = snap({ contractURI: "https://api.coinbase.com/v1/tokenized-stocks/metadata/GTLBc" });
+    s.creation = { ...s.creation!, via: coinbase };
+    const v = judge(s, { index: index({ symbolClones: { count: 2, first, firstBlock: 1, firstTime: 1 }, deployerLaunches: 200 }) });
+    expect(ids(v)).toContain("known-issuer");
+    expect(ids(v)).not.toContain("clone");
+    expect(ids(v)).not.toContain("serial-deployer");
+
+    const spoof = snap({ contractURI: "https://evil.example/metadata" });
+    spoof.creation = { ...spoof.creation!, via: coinbase };
+    expect(ids(judge(spoof))).not.toContain("known-issuer");
+  });
+});
+
+describe("judge identity", () => {
+  it("flags deceptive Unicode", () => {
+    const v = judge(snap({ name: "USD𖼊", symbol: "USD𖼊" }));
+    expect(ids(v)).toEqual(expect.arrayContaining(["unicode-trick", "impersonation-ticker"]));
+    expect(v.findings.find((f) => f.id === "impersonation-ticker")!.title).toBe("Uses the bare USD ticker");
+  });
+  it("points at the real contract for copied assets", () => {
+    const f = judge(snap({ name: "USD Coin", symbol: "ＵＳＤＣ" })).findings.find((x) => x.id === "impersonation-ticker")!;
+    expect(f.severity).toBe("critical");
+    expect(f.detail).toContain("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  });
+  it("says Base has no token", () => {
+    expect(judge(snap({ name: "Base", symbol: "BASE" })).findings.find((x) => x.id === "impersonation-ticker")!.title).toBe("Base has no token");
   });
 });
 

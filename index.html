@@ -10,7 +10,10 @@
   </head>
   <body>
     <header class="top">
-      <a class="brand" href="#/">B20 Inspector</a>
+      <nav class="nav">
+        <a class="brand" href="#/">B20 Inspector</a>
+        <a id="feed-link" href="#/base/new">New tokens</a>
+      </nav>
       <div class="net" role="group" aria-label="Network">
         <button type="button" data-net="base">Mainnet</button>
         <button type="button" data-net="base-sepolia">Sepolia</button>
@@ -32,6 +35,7 @@
           <a href="#/base/0xb200000000000000000000df14b76c292a32982d">a tokenized stock</a>
           <a href="#/base/0xb200000000000000000000b5adfbfc0edcefc0d4">an ownerless launch</a>
           <a href="#/base/0xb2000000000000000000002107cb1ee246447147">a fake BTC</a>
+          · or browse <a href="#/base/new">every new B20 token</a>
         </p>
       </section>
 
@@ -39,7 +43,7 @@
     </main>
 
     <footer>
-      <p>Independent, read-only tool. Not affiliated with Base or Coinbase. Reads public RPCs straight from your browser; nothing is stored.</p>
+      <p>Independent, read-only tool. Not affiliated with Base or Coinbase. Your browser reads public RPCs and a public token index on GitHub directly; there is no backend and nothing about you is collected. <a href="https://github.com/bars26/b20-inspector">Source</a>.</p>
       <p>Older tokens need full log history. Add <code>?logsRpc=https://your-archive-rpc</code> (and optionally <code>&amp;chunk=10000</code>) to the URL to use your own provider.</p>
     </footer>
     <script type="module" src="/src/main.ts"></script>

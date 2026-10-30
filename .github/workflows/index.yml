@@ -1,0 +1,48 @@
+name: Index B20 tokens
+
+# Extends the factory index every 15 minutes and publishes it to the `data` branch,
+# which the site reads through raw.githubusercontent.com.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Load the published index
+        run: |
+          git clone --depth 1 --branch data "https://github.com/${GITHUB_REPOSITORY}.git" out || mkdir -p out
+          rm -rf out/.git
+
+      - name: Index Base mainnet
+        run: node scripts/build-index.ts out/index base
+      - name: Index Base Sepolia
+        run: node scripts/build-index.ts out/index base-sepolia
+
+      # A single orphan commit, force-pushed, so the data branch never accumulates history.
+      - name: Publish
+        working-directory: out
+        run: |
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Index at $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" data
