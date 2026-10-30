@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B20 Inspector</title>
+    <meta name="description" content="Paste a Base B20 token address and see who can mint, seize, pause or freeze it, and what that means for holders." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230b5cff'/><text x='16' y='22' font-family='monospace' font-size='14' font-weight='700' fill='white' text-anchor='middle'>B20</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="#/">B20 Inspector</a>
+      <div class="net" role="group" aria-label="Network">
+        <button type="button" data-net="base">Mainnet</button>
+        <button type="button" data-net="base-sepolia">Sepolia</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Who controls this B20 token?</h1>
+        <p class="lede">
+          B20 is Base's native token standard. Issuers can hold roles to mint, seize, pause and blocklist.
+          Paste a token address to see which of those powers exist, who holds them, and what they mean for your balance.
+        </p>
+        <form id="search" autocomplete="off">
+          <input id="addr" name="addr" spellcheck="false" placeholder="0xb2000000000000000000…" aria-label="B20 token address" />
+          <button type="submit">Inspect</button>
+        </form>
+        <p class="examples">Try:
+          <a href="#/base/0xb200000000000000000000df14b76c292a32982d">a tokenized stock</a>
+          <a href="#/base/0xb200000000000000000000b5adfbfc0edcefc0d4">an ownerless launch</a>
+          <a href="#/base/0xb2000000000000000000002107cb1ee246447147">a fake BTC</a>
+        </p>
+      </section>
+
+      <section id="out" aria-live="polite"></section>
+    </main>
+
+    <footer>
+      <p>Independent, read-only tool. Not affiliated with Base or Coinbase. Reads public RPCs straight from your browser; nothing is stored.</p>
+      <p>Older tokens need full log history. Add <code>?logsRpc=https://your-archive-rpc</code> (and optionally <code>&amp;chunk=10000</code>) to the URL to use your own provider.</p>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

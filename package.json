@@ -1,0 +1,24 @@
+{
+  "name": "b20-inspector",
+  "version": "0.1.0",
+  "description": "Inspect any Base B20 token: who can mint, seize, pause or freeze it, and what that means for holders.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.57.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5",
+    "vitest": "^5.0.5"
+  }
+}
