@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1b3d"/>
+      <stop offset="1" stop-color="#060b1c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- Magnifier: lens ring and handle -->
+  <line x1="338" y1="338" x2="420" y2="420" stroke="#3d7bff" stroke-width="44" stroke-linecap="round"/>
+  <circle cx="232" cy="232" r="148" fill="#0b1430" stroke="#3d7bff" stroke-width="32"/>
+  <text x="232" y="262" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="96" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="-2">B20</text>
+  <!-- Small check under the wordmark -->
+  <path d="M204 296 l20 20 l38 -40" fill="none" stroke="#35d07f" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
