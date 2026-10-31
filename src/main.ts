@@ -54,6 +54,30 @@ form.addEventListener("submit", (e) => {
   if (v) location.hash = `#/${network}/${v}`;
 });
 
+// Day/night toggle. Without a saved choice the page follows the system setting.
+const themeToggle = document.getElementById("theme-toggle") as HTMLButtonElement;
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+const currentTheme = () => document.documentElement.dataset.theme ?? (systemDark.matches ? "dark" : "light");
+function showThemeToggle() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  themeToggle.dataset.next = next;
+  const label = next === "dark" ? "Switch to dark mode" : "Switch to light mode";
+  themeToggle.setAttribute("aria-label", label);
+  themeToggle.title = label;
+}
+themeToggle.addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("b20i:theme", next);
+  } catch {
+    /* private mode: the choice lasts until the page closes */
+  }
+  showThemeToggle();
+});
+systemDark.addEventListener("change", showThemeToggle);
+showThemeToggle();
+
 window.addEventListener("hashchange", load);
 load();
 
