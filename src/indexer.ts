@@ -27,6 +27,8 @@ export const RECENT_DAYS = 7;
 const BLOCKS_PER_DAY = 43_200;
 /** Deployers below this many launches are left out of deployers.json. */
 export const SERIAL_MIN = 3;
+/** A symbol or name shared by this many B20 tokens counts as a warning; a single duplicate is often a coincidence. */
+export const CLONE_WARN = 3;
 
 export const blockTime = (meta: Pick<IndexMeta, "anchor">, block: number) => meta.anchor.timestamp + (block - meta.anchor.block) * 2;
 

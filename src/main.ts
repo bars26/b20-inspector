@@ -2,7 +2,7 @@
 // with textContent only; nothing goes through innerHTML.
 import { ROLE_NAMES, SCOPE_NAMES, type RoleName, type ScopeName } from "./b20.ts";
 import { contextFor, loadIndex, rowFlags, rowTime, type LoadedIndex } from "./feed.ts";
-import { blockTime } from "./indexer.ts";
+import { blockTime, CLONE_WARN } from "./indexer.ts";
 import { checkWallet, inspectToken, NotB20Error } from "./inspect.ts";
 import { makeRpc, type NetworkId, type Rpc } from "./rpc.ts";
 import type { Account, PolicyState, TokenSnapshot } from "./types.ts";
@@ -287,7 +287,7 @@ async function showFeed(rpc: Rpc, me: number) {
 
   const ex = rpc.config.explorer;
   const rows = idx.recent.map((r) => ({ r, flags: rowFlags(idx, r) }));
-  const flagged = (f: ReturnType<typeof rowFlags>) => !!(f.imitates || f.trick || f.brandClaim || (f.clones ?? 0) > 1 || (f.serial ?? 0) >= 10);
+  const flagged = (f: ReturnType<typeof rowFlags>) => !!(f.imitates || f.trick || f.brandClaim || (f.clones ?? 0) >= CLONE_WARN || (f.serial ?? 0) >= 10);
   const now = Math.floor(Date.now() / 1000);
   const day = rows.filter((x) => now - rowTime(idx, x.r) < 86_400);
 
@@ -360,7 +360,7 @@ function feedRow(idx: LoadedIndex, r: LoadedIndex["recent"][number], f: ReturnTy
   if (f.imitates) badges.push(badge(f.imitates.address || ["BTC", "ETH", "SOL"].includes(f.imitates.symbol) ? "critical" : "high", `not ${f.imitates.symbol}`, `Imitates ${f.imitates.name}`));
   if (f.trick) badges.push(badge("high", "deceptive text", f.trick.detail));
   if (f.brandClaim) badges.push(badge("high", "unverified brand", "Names a platform but was created straight from the factory by a wallet"));
-  if (f.clones && f.clones > 1) badges.push(badge(f.clones > 2 ? "high" : "medium", `${f.clones} copies`, "B20 tokens with the same normalized symbol"));
+  if (f.clones && f.clones > 1) badges.push(badge(f.clones >= CLONE_WARN ? "high" : "low",`${f.clones} copies`, "B20 tokens with the same normalized symbol"));
   if (f.serial && f.serial >= 3) badges.push(badge(f.serial >= 10 ? "medium" : "low", `creator: ${f.serial} launches`));
   if (f.issuer) badges.push(badge("good", f.issuer));
   if (r[2] === 1) badges.push(badge("low", "stablecoin"));

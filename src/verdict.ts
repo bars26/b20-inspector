@@ -4,6 +4,7 @@ import { MAX_SUPPLY_CAP, type RoleName, type ScopeName } from "./b20.ts";
 import type { IndexContext } from "./feed.ts";
 import { KNOWN_ISSUERS } from "./feed.ts";
 import { claimsBrand, imitates, unicodeTrick } from "./identity.ts";
+import { CLONE_WARN } from "./indexer.ts";
 import type { Account, PolicyState, TokenSnapshot } from "./types.ts";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "good";
@@ -284,7 +285,7 @@ export function judge(s: TokenSnapshot, opts: JudgeOptions = {}): Verdict {
     const by = ix?.symbolClones ? "symbol" : "name";
     f.push({
       id: original ? "cloned" : "clone",
-      severity: original ? "low" : others >= 2 ? "high" : "medium",
+      severity: original || clone.count < CLONE_WARN ? "low" : "high",
       title: original
         ? `${others} later B20 token${others === 1 ? "" : "s"} copied this ${by}`
         : `One of ${clone.count} B20 tokens with this ${by}`,

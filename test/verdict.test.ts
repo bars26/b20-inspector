@@ -173,6 +173,11 @@ describe("judge with index context", () => {
     expect(c.detail).toContain(first);
   });
 
+  it("treats a single duplicate as information, not a warning", () => {
+    const v = judge(snap(), { index: index({ symbolClones: { count: 2, first, firstBlock: 1, firstTime: 1_760_000_000 } }) });
+    expect(v.findings.find((f) => f.id === "clone")!.severity).toBe("low");
+  });
+
   it("credits the original instead of flagging it", () => {
     const s = snap();
     const v = judge(s, { index: index({ symbolClones: { count: 3, first: s.address, firstBlock: 1, firstTime: 1 } }) });
